@@ -49,7 +49,7 @@ def main():
         7.5,
         6.3,
         5.4,
-
+g
     ]))  # net hyetograph
     hy_net = _get_excess_rainfall_hyetograph_phi(hy, 124)
     hy_net.plot(hyd)
