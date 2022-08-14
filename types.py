@@ -1,84 +1,76 @@
-from dataclasses import dataclass, Field
+from dataclasses import dataclass, field
+from functools import cached_property
+from typing import Optional
+
 import numpy as np
-from matplotlib.axes import Axes
 from numpy.typing import NDArray
-from src.exceptions import NotSupportedStyleError, DeltaTimeMismatchError, SeriesDimensionError
+
+from src.exceptions import DeltaTimeMismatchError, SeriesDimensionError
 
 
+@dataclass
+class TimeSeries:
+    """
+    Representation of a time series graph \n
+    'delta_time': time between two consecutive observations in 'data' \n
+    'data': 1-D numpy array containing the observations of the time series
+    """
+
+    delta_time: int
+    data: NDArray
+    label: Optional[str] = field(default=None)
+
+    def __post_init__(self):
+        if self.data.ndim != 1:
+            raise SeriesDimensionError("Time series data must be 1-D")
+
+    @cached_property
+    def total_duration(self) -> int:
+        return len(self.data) * self.delta_time
+
+
+@dataclass
 class Hyetograph:
-    def __init__(self, delta_t: int, series: NDArray, name: str = 'Hietograma'):
-        """Hyetograph. delta_t is the duration of each pulse."""
-        self.delta_t = delta_t
-        self.series = series
-        self.total_duration = len(series) * delta_t
-        self.name = name
+    """
+    Representation of a hyetograph (rainfall distribution over time) \n
+    'name': name of the hyetograph \n
+    'time_series': time series from which the hyetograph is created
+    """
+    name: str
+    time_series: TimeSeries
 
-    def __str__(self):
-        return f"delta_t: {self.delta_t}, series: {self.series}"
+    @cached_property
+    def total_rainfall(self) -> float:
+        return self.time_series.data.sum()
 
-    def __len__(self):
-        return len(self.series)
+
+@dataclass
+class Hydrograph:
+    """
+    Representation of a hydrograph (discharge distribution over time) \n
+    'name': name of the hydrograph \n
+    'time_series': time series from which the hydrograph is created \n
+    'associated_hyetograph': hyetograph of which the hydrograph is the response
+    """
+    name: str
+    time_series: TimeSeries
+    associated_hyetograph: Optional[Hyetograph] = field(default=None)
+
+    def __post_init__(self):
+        if self.associated_hyetograph is None:
+            """if no hyetograph is associated, create a unit hyetograph"""
+            self.associated_hyetograph = Hyetograph(
+                f"Unit hyetograph of {self.name}",
+                TimeSeries(self.time_series.delta_time, np.array([1]))
+            )
+        elif self.associated_hyetograph.time_series.delta_time != self.time_series.delta_time:
+            raise DeltaTimeMismatchError(f"Delta time of hyetograph {self.associated_hyetograph.name} and "
+                                         f"hydrograph {self.name} do not match")
 
     @property
-    def total_rainfall(self) -> float:
-        return np.sum(self.series)
-
-    def plot(self, ax: Axes, style: str = 'bar') -> Axes:
-        """Plot hyetograph on ax"""
-        total_duration = self.total_duration
-        delta_t = self.delta_t
-        if style == 'bar':
-            ax.bar(np.arange(0, total_duration, delta_t), self.series, width=delta_t, align="edge", label=self.name)
-        elif style == 'line':
-            ax.plot(np.arange(total_duration), self.series, label=self.name)
-        else:
-            raise NotSupportedStyleError(f"Style {style} is not supported")
-
-        ax.set(xlabel="T [s]",
-               ylabel="P [mm]",
-               xticks=np.arange(delta_t, total_duration + delta_t, delta_t))
-        ax.set_xlim(xmin=0)
-        ax.set_ylim(ymin=0)
-        return ax
+    def total_volume(self):
+        return self.time_series.data.sum() * self.time_series.delta_time
 
 
-
-
-class Hydrograph:
-    def __init__(self, delta_t: int, series: NDArray, hyetograph: Hyetograph = None, name: str = 'Hidrograma'):
-        """
-        Hydrograph. Default is unit hydrograph (hyetograph.series = [1]).  \n
-        delta_t must be the same as hyetograph.delta_t
-        """
-        if hyetograph and delta_t != hyetograph.delta_t:
-            raise DeltaTimeMismatchError("delta_t must be the same as hyetograph.delta_t")
-        self.hyetograph = hyetograph if hyetograph else Hyetograph(delta_t, np.array([1]))
-        self.delta_t = delta_t
-        self.series = series
-        self.total_duration = len(series) * delta_t
-        self.name = name
-
-    def __str__(self):
-        return f"Hydrograph (delta_t: {self.delta_t}, series: {self.series})"
-
-    def __len__(self):
-        return len(self.series)
-
-    def plot(self, ax: Axes, style: str = 'bar') -> Axes:
-        """Plots hydrograph on ax. (style: 'bar' or 'line')"""
-        total_duration = self.total_duration
-        delta_t = self.delta_t
-        if style == 'bar':
-            ax.bar(np.arange(0, total_duration, delta_t), self.series, width=delta_t, align="edge", label=self.name)
-        elif style == 'line':
-            ax.plot(np.arange(0, total_duration, delta_t), self.series, label=self.name)
-        else:
-            raise NotSupportedStyleError(f"Plot style {style} is not supported")
-        ax.set(xlabel="T [s]",
-               ylabel="Q [mm]",
-               xticks=np.arange(delta_t, total_duration + delta_t, delta_t))
-        ax.set_xlim(xmin=0)
-        ax.set_ylim(ymin=0)
-        return ax
 
 
